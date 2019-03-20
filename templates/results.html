@@ -1,0 +1,43 @@
+{% extends "main.html" %}
+{% block content %}
+    <table border="1">
+        <tr>
+            <td>PID</td>
+            <td>Repost</td>
+            <td>Listing Created</td>
+            <td>Title</td>
+            <td>Price</td>
+            <td>Location</td>
+            <td>Request ID</td>
+            <td>Notification Sent</td>
+        </tr>
+    {% for listing in listings %}
+        <tr>
+            <td>
+                {{listing.pid}}
+            </td>
+            <td>
+                {{listing.repost}}
+            </td>
+            <td>
+                {{listing.listing_created}}
+            </td>
+            <td>
+                <a href="{{listing.href}}">{{listing.title}}</a>
+            </td>
+            <td>
+                ${{listing.price}}
+            </td>
+            <td>
+                {{listing.loc}}
+            </td>
+            <td>
+                {{listing.request_id}}
+            </td>
+            <td>
+                {{listing.notification_sent}}
+            </td>
+        </tr>
+    {% endfor %}
+    </table>
+{% endblock %}
