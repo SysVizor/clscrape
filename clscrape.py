@@ -3,7 +3,7 @@
     -------------------
     Functions for program. Called by main and manage
 
-    python-telegram-bot is required for notification
+    python-telegram-bot is required for notifications
     https://github.com/python-telegram-bot/python-telegram-bot
 
     pip install python-telegram-bot
@@ -17,18 +17,29 @@ import random
 import telegram
 
 def db_check(db):
+    """
+        Check if the database exists.
+        Create a new one if not found
+    """
     if os.path.isfile(db) == False:
+        print("Creating new database. This may take a while...")
         # Create new database
         con = sqlite3.connect(db)
         cur = con.cursor()
+        # Create tables
+        index = 0
+        print("Creating request table")
         cur.execute('''CREATE TABLE requests (
             id integer,
-            reqLoc text,
+            loc_id integer,
             telegram_id text,
+            email text,
+            cat_id integer,
             query text,
             created text
         )''')
         con.commit()
+        print("Creating results table")
         cur.execute('''CREATE TABLE results (
             pid integer,
             repost integer,
@@ -41,33 +52,114 @@ def db_check(db):
             notification_sent text
         )''')
         con.commit()
+        print("Creating category table")
+        cur.execute('''CREATE TABLE category (
+            id integer,
+            parent_id integer,
+            description text,
+            value text,
+            usage_index integer
+        )''')
+        con.commit()
+        print("Creating location table")
+        cur.execute('''CREATE TABLE location (
+            id integer,
+            description text,
+            value text,
+            usage_index integer
+        )''')
+        # Add Categories to Category table
+        index = 0
+        category = [('ccc','community'),
+        ('eee','events'),('sss','for sale'),
+        ('ggg','gigs'),('hhh','housing'),
+        ('jjj','jobs'),('rrr','resumes'),('bbb','services')]
+        # Add base categories
+        for i in category:
+            cur.execute('insert into category values (?,?,?,?,?)', (index,None,i[1],i[0],0))
+            con.commit()
+            print("Added",i[1], "to category table")
+            index += 1
+        # Add subcategories
+        data = requests.get('https://newyork.craigslist.org/')
+        main = BeautifulSoup(data.text, 'html.parser')
+        category = main.find('div', {'id': 'center'})
+        for p_cat in category.find_all('ul'):
+            parent = p_cat['id'][:-1]
+            if parent != 'forums':
+                for li in p_cat.find_all('li'):
+                    for a in li.find_all('a'):
+                        value = a['href'][-3:].strip()
+                        description = a.text.strip()
+                        cur.execute('select id from category where value = ?', (parent,))
+                        p_id = cur.fetchone()[0]
+                        cur.execute('insert into category values (?,?,?,?,?)', (index,p_id,description,value,0))
+                        con.commit()
+                        print("Added", description, "to category table")
+                        index += 1
+        # Add Locations to Location table
+        index = 0
+        data = requests.get('https://geo.craigslist.org/iso/us')
+        main = BeautifulSoup(data.text, 'html.parser')
+        ul = main.find('ul', {'class': 'height6 geo-site-list'})
+        for city in ul.find_all('a'):
+            value = city['href'].strip()
+            description = city.text.strip()
+            cur.execute('insert into location values (?,?,?,?)', (index,description,value,0))
+            con.commit()
+            print("Added", description, "to location table")
+            index += 1
         con.close()
+        print("Database created successfully!")
 
-def db_add_req(db,reqLoc,telegram_id,query):
+def db_add_loc(db,href,description):
+    con = sqlite3.connect(db)
+    cur = con.cursor()
+    cur.execute('select id from location order by id desc limit 1')
+    index = int(cur.fetchone()[0]) + 1
+    cur.execute('insert into location values (?,?,?,?)', (index,description,href,1000))
+    con.commit()
+    con.close()
+
+def db_add_req(db,reqLoc,telegram_id,email,cat,query):
+    """
+        Add a request to database
+    """
     str_time = time.strftime('%Y-%m-%d %H:%M')
     pk = time.strftime('%Y%m%d%H%M%S') + str(random.randint(100,999))
     con = sqlite3.connect(db)
     cur = con.cursor()
-    cur.execute('insert into requests values (?,?,?,?,?)', (pk,reqLoc,telegram_id,query,str_time))
+    cur.execute('insert into requests values (?,?,?,?,?,?,?)', (pk,reqLoc,telegram_id,email,cat,query,str_time))
+    con.commit()
+    cur.execute('select usage_index from category where id = ?', (cat,))
+    c_usage = int(cur.fetchone()[0]) + 1
+    cur.execute('update category set usage_index = ? where id = ?', (c_usage, cat))
+    con.commit()
+    cur.execute('select usage_index from location where id = ?', (reqLoc,))
+    l_usage = int(cur.fetchone()[0]) + 1
+    cur.execute('update location set usage_index = ? where id = ?', (l_usage, reqLoc))
     con.commit()
     con.close()
     return pk
 
 def page_parse(db, request_new, request_id):
+    """
+        Scrape listings for request
+    """
     con = sqlite3.connect(db)
     cur = con.cursor()
     # Get request details
-    cur.execute("select reqLoc from requests where id = ?", (request_id,))
-    location = cur.fetchone()[0]
-    cur.execute("select query from requests where id = ?", (request_id,))
-    query = cur.fetchone()[0]
-
+    cur.execute('''select l.value, c.value, rq.query
+        from requests rq
+        inner join location l on rq.loc_id = l.id
+        inner join category c on rq.cat_id = c.id
+        where rq.id = ?''', (request_id,))
+    q = cur.fetchone()
     # Fetch page
-    uri = 'https://' + location + '.craigslist.org/search/sss?query=' + query.replace(" ", "%20") + '&sort=rel'
+    uri = q[0] + '/search/' + q[1] + '?query=' + q[2].replace(" ", "%20") + '&sort=rel'
     data = requests.get(uri)
     main = BeautifulSoup(data.text, 'html.parser')
     ul = main.find('ul', {'class': 'rows'})
-    
     # Parse listings
     for li in ul.find_all('li'):
         #CL ID
@@ -106,8 +198,11 @@ def page_parse(db, request_new, request_id):
                     con.commit()
     con.close()
 
-def db_fetch(db, tble):
-    q = "select * from " + str(tble)
+def db_fetch(db, tble, cols):
+    """
+        Get table from database
+    """
+    q = "select " + str(cols) + " from " + str(tble)
     con = sqlite3.connect(db)
     cur = con.cursor()
     cur.execute(q)
@@ -115,28 +210,38 @@ def db_fetch(db, tble):
     con.close()
     return res
 
-def db_del_req(db, selected):
+def db_del_row(db, tble, selected):
+    """
+        Remove a request from database
+    """
+    q = "delete from " + tble + " where id = ?"
     con = sqlite3.connect(db)
     cur = con.cursor()
-    cur.execute("delete from requests where id = ?", (selected,))
+    cur.execute(q, (selected,))
     con.commit()
     con.close()
 
 def db_result_purge(db):
+    """
+        Purge entires from results where request no longer exists
+    """
     con = sqlite3.connect(db)
     cur = con.cursor()
     # Remove results where request has been removed
     cur.execute('''select distinct rs.request_id
-    from results rs
-    left join requests rq on rs.request_id = rq.id
-    where rq.id is null
-    ''')
+        from results rs
+        left join requests rq on rs.request_id = rq.id
+        where rq.id is null
+        ''')
     for id in cur.fetchall():
         cur.execute("delete from results where request_id = ?", (id[0],))
         con.commit()
     con.close()
 
 def db_result_cleanup(db):
+    """
+        Remove entires from results where listing no longer active
+    """
     con = sqlite3.connect(db)
     cur = con.cursor()
     # Remove expired results
@@ -151,17 +256,20 @@ def db_result_cleanup(db):
     con.close()
 
 def telegram_notify(db, bot_id):
+    """
+        Send a notification via telegram
+    """
     bot = telegram.Bot(token=bot_id)
     con = sqlite3.connect(db)
     cur = con.cursor()
     # Send notification telegram_id when listing is new or updated
     cur.execute('''select rq.telegram_id, rs.notification_sent,
-    rs.title, rs.price, rs.href, rs.loc, rs.pid, request_id
-    from results rs
-    inner join requests rq on rs.request_id = rq.id
-    where rs.notification_sent = 'UPDATE'
-    or rs.notification_sent is null and rs.repost is null
-    ''')
+        rs.title, rs.price, rs.href, rs.loc, rs.pid, request_id
+        from results rs
+        inner join requests rq on rs.request_id = rq.id
+        where rs.notification_sent = 'UPDATE'
+        or rs.notification_sent is null and rs.repost is null
+        ''')
     for listing in cur.fetchall():
         str_time = time.strftime('%Y-%m-%d %H:%M')
         if listing[1] == 'UPDATE':

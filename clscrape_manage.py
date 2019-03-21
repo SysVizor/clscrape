@@ -8,7 +8,7 @@
 
     pip install Flask
 
-    Use localhost:5000 if launching locally.
+    Use localhost:5000 to access if launching locally.
 """
 import flask
 import os
@@ -34,7 +34,7 @@ def home():
 @app.route("/results")
 def res():
     listings = []
-    for row in clscrape.db_fetch(db, 'results'):
+    for row in clscrape.db_fetch(db, 'results', '*'):
         listings.append(
             {
                 'pid' : row[0],
@@ -53,32 +53,73 @@ def res():
 @app.route("/requests")
 def req():
     requests = []
-    for row in clscrape.db_fetch(db, 'requests'):
+    for row in clscrape.db_fetch(db, '''requests rq
+        left join location l on rq.loc_id = l.id
+        left join category c on rq.cat_id = c.id ''', '''rq.id, l.description,
+        rq.telegram_id, rq.email, c.description, rq.query, rq.created'''):
         requests.append(
             {
                 'id' : row[0],
                 'reqLoc' : row[1],
                 'telegram_id' : row[2],
-                'query' : row[3],
-                'created' : row[4]
+                'email' : row[3],
+                'categrory': row[4],
+                'query' : row[5],
+                'created' : row[6]
             }
         )
-    return flask.render_template('requests.html', requests=requests)
+    cats = []
+    for row in clscrape.db_fetch(db, '''category c1 left join category c2 on c2.id = c1.parent_id
+        order by c1.usage_index desc, c2.description, c1.description''',\
+        'c1.id, c2.description, c1.description'):
+        if row[1] == None:
+            desc = row[2]
+        else: desc = row[1] + '-' + row[2]
+        cats.append(
+            {
+                'id': row[0],
+                'description': desc
+            }
+        )
+    locs = []
+    for row in clscrape.db_fetch(db, 'location order by usage_index desc, description', 'id, description'):
+        locs.append(
+            {
+                'id': row[0],
+                'description': row[1]
+            }
+        )
+    return flask.render_template('requests.html', requests=requests, cats=cats, locs=locs)
 
 @app.route("/delReq")
 def delReq():
     for selected in flask.request.args.getlist('selector'):
-        clscrape.db_del_req(db, selected)
+        clscrape.db_del_row(db, 'requests', selected)
     clscrape.db_result_purge(db)
     return flask.redirect('/requests')
 
 @app.route("/addReq")
 def addReq():
     telegram_id = flask.request.args.get('telegram_id')
+    email = flask.request.args.get('email')
     reqLoc = flask.request.args.get('reqLoc')
-    query = flask.request.args.get('query')
-    pk = clscrape.db_add_req(db,reqLoc,telegram_id,query)
+    cat = flask.request.args.get('cat').strip()
+    query = flask.request.args.get('query').strip()
+    pk = clscrape.db_add_req(db,reqLoc,telegram_id,email,cat,query)
     clscrape.page_parse(db, True, pk)
+    return flask.redirect('/requests')
+
+@app.route("/delLoc")
+def delLoc():
+    selected = flask.request.args.get('reqLoc')
+    clscrape.db_del_row(db,'location', selected)
+    return flask.redirect('/requests')
+
+@app.route("/addLoc")
+def addLoc():
+    locURL = flask.request.args.get('locURL')
+    locDesc = flask.request.args.get('locDesc')
+    clscrape.db_add_loc(db,locURL,locDesc)
     return flask.redirect('/requests')
 
 if __name__ == '__main__':
