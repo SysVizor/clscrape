@@ -25,13 +25,11 @@ Simply download or clone the repository, and place the files wherever you like.
 ## Usage
 The first thing to do is run <code>clscrape_manage.py</code>. This will create the database file, and host the management page on <code>localhost:5000</code>, which can be opened in a web browser.
 
-Once you open the page, navigate to <code>Manage Requests</code>. Here we can add a new query to search through on Craigslist.
+Once you open the page, navigate to <code>Manage Requests</code>. Here a new query to search through on Craigslist can be added.
 
 Both the email and telegram id are optional, and email notifications are not currently implemented. For telegram notifications to work, you must enter _your_ telegram chat id (the easiest way to get this is by forwarding a message to @getidsbot)
 
-The <code>Location</code> should be the Craigslist _subdomain_. For example: If your area of choice is <code>https://newyork.craigslist.org/</code>, you would enter <code>newyork</code> into this field.
-
-The Query field is anything that you might type into the search bar on the left. Currently, this only works for listings in the "for sale" section.
+The Query field is anything that you might type into the search bar on the left.
 
 ## Updates and Notifications
 If you want to get notifications, you will first need to set up a Telegram Bot (the easiest way to do this is by messaging @BotFather). Once you have your bot's token, copy it into the <code>bot_id</code> variable in <code>clscrape_main.py</code>. And send a message to your new bot.
