@@ -17,6 +17,8 @@ If you're not familiar with SQL or databases in general, you're in luck. SQLite 
 ## Installation
 Prerequisites:
 - [Python3](https://www.python.org/)
+- [Requests](https://pypi.org/project/requests/)
+- [BeautifulSoup4](https://pypi.org/project/beautifulsoup4/)
 - [Flask](http://flask.pocoo.org/)
 - [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
 
